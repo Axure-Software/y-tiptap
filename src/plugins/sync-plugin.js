@@ -4,7 +4,7 @@
 
 import { createMutex } from 'lib0/mutex'
 import * as PModel from 'prosemirror-model'
-import { AllSelection, Plugin, TextSelection, NodeSelection } from "prosemirror-state"; // eslint-disable-line
+import { Plugin, Selection, TextSelection } from "prosemirror-state"; // eslint-disable-line
 import * as math from 'lib0/math'
 import * as object from 'lib0/object'
 import * as set from 'lib0/set'
@@ -243,38 +243,13 @@ export const ySyncPlugin = (yXmlFragment, {
 
 /**
  * @param {import('prosemirror-state').Transaction} tr
- * @param {ReturnType<typeof getRelativeSelection>} relSel
+ * @param {ReturnType<typeof createRecoverableSelection>} recoverableSel
  * @param {ProsemirrorBinding} binding
  */
-const restoreRelativeSelection = (tr, relSel, binding) => {
-  if (relSel !== null && relSel.anchor !== null && relSel.head !== null) {
-    if (relSel.type === 'all') {
-      tr.setSelection(new AllSelection(tr.doc))
-    } else if (relSel.type === 'node') {
-      const anchor = relativePositionToAbsolutePosition(
-        binding.doc,
-        binding.type,
-        relSel.anchor,
-        binding.mapping
-      )
-      tr.setSelection(NodeSelection.create(tr.doc, anchor))
-    } else {
-      const anchor = relativePositionToAbsolutePosition(
-        binding.doc,
-        binding.type,
-        relSel.anchor,
-        binding.mapping
-      )
-      const head = relativePositionToAbsolutePosition(
-        binding.doc,
-        binding.type,
-        relSel.head,
-        binding.mapping
-      )
-      if (anchor !== null && head !== null) {
-        tr.setSelection(TextSelection.between(tr.doc.resolve(anchor), tr.doc.resolve(head)))
-      }
-    }
+const restoreRelativeSelection = (tr, recoverableSel, binding) => {
+  if (recoverableSel !== null && recoverableSel.valid()) {
+    const selection = recoverableSel.restore(binding, tr.doc)
+    tr = tr.setSelection(selection)
   }
 }
 
@@ -295,6 +270,68 @@ export const getRelativeSelection = (pmbinding, state) => ({
     pmbinding.mapping
   )
 })
+
+export const createRecoverableSelection = (pmbinding, state) => {
+  const sel = new RecoverableSelection(pmbinding, state.selection)
+  state.selection.map(state.doc, sel)
+  return sel
+}
+
+export class RecoverableSelection {
+  constructor (pmbinding, selection, recoverMode = false) {
+    this.records = []
+    this.pmbinding = pmbinding
+    this.selection = selection
+    this.recoverMode = recoverMode
+  }
+
+  restore (pmbinding, doc) {
+    try {
+      return this.selection.map(doc, new RecoveryMapping(pmbinding, this.records))
+    } catch {
+      const $pos = doc.resolve(this.selection.anchor)
+      return Selection.near($pos)
+    }
+  }
+
+  valid () {
+    return !!this.records.length && this.records.every(r => r.relPos)
+  }
+
+  map (pos) {
+    const relPos = absolutePositionToRelativePosition(pos, this.pmbinding.type, this.pmbinding.mapping)
+    this.records.push({ pos, relPos })
+    return pos
+  }
+
+  mapResult (pos) {
+    return { deleted: false, pos: this.map(pos) }
+  }
+}
+
+export class RecoveryMapping {
+  constructor (pmbinding, records) {
+    this.pmbinding = pmbinding
+    this.records = records
+  }
+
+  map (pos) {
+    return this.mapResult(pos).pos
+  }
+
+  mapResult (pos) {
+    for (const rec of this.records) {
+      if (rec.pos === pos) {
+        const mappedPos = relativePositionToAbsolutePosition(this.pmbinding.doc, this.pmbinding.type, rec.relPos, this.pmbinding.mapping)
+        if (mappedPos === null) {
+          return { deleted: true, pos }
+        }
+        return { deleted: false, pos: mappedPos }
+      }
+    }
+    throw new Error('not recorded')
+  }
+}
 
 /**
  * Binding for prosemirror.
@@ -328,12 +365,17 @@ export class ProsemirrorBinding {
     // @ts-ignore
     this.doc = yXmlFragment.doc
     /**
+     * last selection as relative positions in the Yjs model
+     */
+    this.beforePatchSelection = null
+    /**
      * current selection as relative positions in the Yjs model
      */
     this.beforeTransactionSelection = null
+    this.lastProsemirrorState = null
     this.beforeAllTransactions = () => {
       if (this.beforeTransactionSelection === null && this.prosemirrorView != null) {
-        this.beforeTransactionSelection = getRelativeSelection(
+        this.beforeTransactionSelection = createRecoverableSelection(
           this,
           this.prosemirrorView.state
         )
@@ -646,8 +688,10 @@ export class ProsemirrorBinding {
    */
   _prosemirrorChanged (doc) {
     this.doc.transact(() => {
+      this.beforePatchSelection = createRecoverableSelection(this, this.lastProsemirrorState)
+      this.lastProsemirrorState = this.prosemirrorView.state
       updateYFragment(this.doc, this.type, doc, this)
-      this.beforeTransactionSelection = getRelativeSelection(
+      this.beforeTransactionSelection = createRecoverableSelection(
         this,
         this.prosemirrorView.state
       )
@@ -661,6 +705,7 @@ export class ProsemirrorBinding {
   initView (prosemirrorView) {
     if (this.prosemirrorView != null) this.destroy()
     this.prosemirrorView = prosemirrorView
+    this.lastProsemirrorState = prosemirrorView.state
     this.doc.on('beforeAllTransactions', this.beforeAllTransactions)
     this.doc.on('afterAllTransactions', this.afterAllTransactions)
     this.type.observeDeep(this._observeFunction)

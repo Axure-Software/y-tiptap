@@ -1,6 +1,6 @@
 import { Plugin } from 'prosemirror-state' // eslint-disable-line
 
-import { getRelativeSelection } from './sync-plugin.js'
+import { createRecoverableSelection } from './sync-plugin.js'
 import { UndoManager, Item, ContentType, XmlElement, Text } from 'yjs'
 import { yUndoPluginKey, ySyncPluginKey } from './keys.js'
 
@@ -23,10 +23,10 @@ export const redo = state => {
 export const defaultProtectedNodes = new Set(['paragraph'])
 
 export const defaultDeleteFilter = (item, protectedNodes) => !(item instanceof Item) ||
-!(item.content instanceof ContentType) ||
-!(item.content.type instanceof Text ||
+  !(item.content instanceof ContentType) ||
+  !(item.content.type instanceof Text ||
   (item.content.type instanceof XmlElement && protectedNodes.has(item.content.type.nodeName))) ||
-item.content.type._length === 0
+  item.content.type._length === 0
 
 export const yUndoPlugin = ({ protectedNodes = defaultProtectedNodes, trackedOrigins = [], undoManager = null } = {}) => new Plugin({
   key: yUndoPluginKey,
@@ -57,7 +57,7 @@ export const yUndoPlugin = ({ protectedNodes = defaultProtectedNodes, trackedOri
       if (binding) {
         return {
           undoManager,
-          prevSel: getRelativeSelection(binding, oldState),
+          prevSel: createRecoverableSelection(binding, oldState),
           hasUndoOps,
           hasRedoOps
         }
@@ -74,15 +74,16 @@ export const yUndoPlugin = ({ protectedNodes = defaultProtectedNodes, trackedOri
     }
   },
   view: view => {
-    const ystate = ySyncPluginKey.getState(view.state)
     const undoManager = yUndoPluginKey.getState(view.state).undoManager
     undoManager.on('stack-item-added', ({ stackItem }) => {
+      const ystate = ySyncPluginKey.getState(view.state)
       const binding = ystate.binding
       if (binding) {
-        stackItem.meta.set(binding, yUndoPluginKey.getState(view.state).prevSel)
+        stackItem.meta.set(binding, binding.beforePatchSelection)
       }
     })
-    undoManager.on('stack-item-popped', ({ stackItem }) => {
+    undoManager.on('stack-item-pop', ({ stackItem }) => {
+      const ystate = ySyncPluginKey.getState(view.state)
       const binding = ystate.binding
       if (binding) {
         binding.beforeTransactionSelection = stackItem.meta.get(binding) || binding.beforeTransactionSelection
