@@ -963,6 +963,15 @@ const equalYTextPText = (ytext, ptexts) => {
       object.every(d.attributes, (attr, yattrname) => {
         const markname = yattr2markname(yattrname)
         const pmarks = ptexts[i].marks
+
+        const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)
+
+        // Ensure the pmark is present in the ptexts before checking equality. When replacing a mark with another mark
+        // the pmark will be missing from the ptexts and the equalAttrs will throw an error.
+        if (!pmark) {
+          return false
+        }
+
         return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
       })
     )
