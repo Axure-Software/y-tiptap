@@ -960,7 +960,7 @@ const equalYTextPText = (ytext, ptexts) => {
     delta.every(/** @type {(d:any,i:number) => boolean} */ (d, i) =>
       d.insert === /** @type {any} */ (ptexts[i]).text &&
       object.keys(d.attributes || {}).length === ptexts[i].marks.length &&
-      object.every(d.attributes, (attr, yattrname) => {
+      object.every(d.attributes, (attr, /** @type {string} */ yattrname) => {
         const markname = yattr2markname(yattrname)
         const pmarks = ptexts[i].marks
 

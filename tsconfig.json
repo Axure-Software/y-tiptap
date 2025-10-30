@@ -2,6 +2,7 @@
   "compilerOptions": {
     /* Basic Options */
     "target": "es2018",
+    "skipLibCheck": true,
     "lib": [
       "es2018",
       "dom"
