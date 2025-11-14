@@ -4,7 +4,7 @@
 
 import { createMutex } from 'lib0/mutex'
 import * as PModel from 'prosemirror-model'
-import { Plugin, Selection, TextSelection } from "prosemirror-state"; // eslint-disable-line
+import { NodeSelection, Plugin, Selection, TextSelection } from "prosemirror-state"; // eslint-disable-line
 import * as math from 'lib0/math'
 import * as object from 'lib0/object'
 import * as set from 'lib0/set'
@@ -1005,9 +1005,18 @@ const equalYTextPText = (ytext, ptexts) => {
     delta.every(/** @type {(d:any,i:number) => boolean} */ (d, i) =>
       d.insert === /** @type {any} */ (ptexts[i]).text &&
       object.keys(d.attributes || {}).length === ptexts[i].marks.length &&
-      object.every(d.attributes, (attr, yattrname) => {
+      object.every(d.attributes, (attr, /** @type {string} */ yattrname) => {
         const markname = yattr2markname(yattrname)
         const pmarks = ptexts[i].marks
+
+        const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)
+
+        // Ensure the pmark is present in the ptexts before checking equality. When replacing a mark with another mark
+        // the pmark will be missing from the ptexts and the equalAttrs will throw an error.
+        if (!pmark) {
+          return false
+        }
+
         return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
       })
     )
