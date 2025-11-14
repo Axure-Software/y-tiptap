@@ -254,23 +254,6 @@ const restoreRelativeSelection = (tr, recoverableSel, binding) => {
 }
 
 /**
- * @param {import('prosemirror-state').Transaction} tr
- * @param {number} pos
- * @returns {import('prosemirror-state').Selection}
- *
- * Creates a NodeSelection if the position points to a valid node, otherwise
- * creates a TextSelection near the position.
- */
-const createSafeNodeSelection = (tr, pos) => {
-  const $pos = tr.doc.resolve(pos)
-  if ($pos.nodeAfter) {
-    return NodeSelection.create(tr.doc, pos)
-  } else {
-    return TextSelection.near($pos)
-  }
-}
-
-/**
  * @param {ProsemirrorBinding} pmbinding
  * @param {import('prosemirror-state').EditorState} state
  */
