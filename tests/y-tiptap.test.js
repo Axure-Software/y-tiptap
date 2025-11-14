@@ -309,6 +309,64 @@ export const testInsertDuplication = (_tc) => {
   t.assert(yxml1.toString() === '<paragraph>1122</paragraph><paragraph></paragraph>')
 }
 
+export const testReplaceBoldWithCode = (_tc) => {
+  const ydoc = new Y.Doc()
+  const yXmlFragment = ydoc.get('prosemirror', Y.XmlFragment)
+  const view = createNewProsemirrorView(ydoc) // This already includes ySyncPlugin
+
+  // Insert a paragraph with some text
+  view.dispatch(
+    view.state.tr.insert(
+      0,
+      schema.node(
+        'paragraph',
+        undefined,
+        schema.text('test')
+      )
+    )
+  )
+
+  view.dispatch(view.state.tr.addMark(1, 5, schema.mark('strong')))
+
+  t.compare(
+    JSON.parse(JSON.stringify(view.state.doc.toJSON().content[0].content)),
+    [{
+      type: 'text',
+      marks: [{ type: 'strong' }],
+      text: 'test'
+    }],
+    'invalid view state'
+  )
+
+  t.compare(
+    yXmlFragment.get(0).toString(),
+    '<paragraph><strong>test</strong></paragraph>',
+    'invalid ydoc state'
+  )
+
+  view.dispatch(
+    view.state.tr
+      .removeMark(1, 5, schema.mark('strong'))
+      .addMark(1, 5, schema.mark('code'))
+  )
+
+  t.compare(
+    JSON.parse(JSON.stringify(view.state.doc.toJSON().content[0].content)),
+    [{
+      type: 'text',
+      marks: [{ type: 'code' }],
+      text: 'test'
+    }],
+    'invalid view state'
+  )
+
+  t.compare(
+    yXmlFragment.get(0).toString(),
+    '<paragraph><code>test</code></paragraph>',
+    'invalid ydoc state'
+  )
+}
+
 export const testAddToHistory = (_tc) => {
   const ydoc = new Y.Doc()
   const view = createNewProsemirrorViewWithUndoManager(ydoc)
@@ -692,6 +750,93 @@ const checkResult = (result) => {
     const p2 = result.testObjects[i].state.doc.toJSON()
     t.compare(p1, p2)
   }
+}
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testRestoreSelectionForDeletedInlineNode = (_tc) => {
+  const ydoc = new Y.Doc()
+  const schemaWithInlineAtom = new Schema({
+    nodes: Object.assign({}, basicSchema.nodes, {
+      inlineatom: {
+        inline: true,
+        group: 'inline',
+        atom: true,
+        selectable: true,
+        parseDOM: [{ tag: 'inline-atom' }],
+        toDOM () { return ['inline-atom'] }
+      }
+    }),
+    marks: basicSchema.marks
+  })
+
+  const view = createNewProsemirrorViewWithSchema(ydoc, schemaWithInlineAtom)
+
+  view.dispatch(
+    view.state.tr.insert(
+      0,
+      schemaWithInlineAtom.node('paragraph', undefined, [
+        schemaWithInlineAtom.text('a'),
+        schemaWithInlineAtom.node('inlineatom'),
+        schemaWithInlineAtom.text('b')
+      ])
+    )
+  )
+
+  // compute the absolute position of the inline atom node inside the doc
+  const para = view.state.doc.child(0)
+  let pos = 1
+  for (let i = 0; i < para.childCount; i++) {
+    const child = para.child(i)
+    if (child.type.name === 'inlineatom') break
+    pos += child.nodeSize
+  }
+
+  view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)))
+
+  const node = view.state.doc.nodeAt(pos)
+  const nodeSize = node ? node.nodeSize : 1
+  view.dispatch(view.state.tr.delete(pos, pos + nodeSize))
+
+  const sel = view.state.selection
+  t.assert(!(sel instanceof NodeSelection), 'selection should not be a NodeSelection')
+  t.assert(sel instanceof TextSelection, 'selection should be a TextSelection')
+  t.assert(sel.anchor >= 0 && sel.anchor <= view.state.doc.content.size, 'selection anchor within bounds')
+}
+
+export const testRestoreSelectionForDeletedBlockNode = async (_tc) => {
+  const ydoc = new Y.Doc()
+  const view = createNewComplexProsemirrorView(ydoc)
+
+  view.dispatch(
+    view.state.tr.insert(
+      0,
+      [
+        complexSchema.node('paragraph', undefined, complexSchema.text('before')),
+        complexSchema.node('custom'),
+        complexSchema.node('paragraph', undefined, complexSchema.text('after'))
+      ]
+    )
+  )
+
+  // compute the absolute position of the custom block node inside the doc
+  const doc = view.state.doc
+  let pos = 1
+  for (let i = 0; i < doc.childCount; i++) {
+    const child = doc.child(i)
+    if (child.type.name === 'custom') break
+    pos += child.nodeSize
+  }
+
+  view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)))
+
+  const node = view.state.doc.nodeAt(pos)
+  const nodeSize = node ? node.nodeSize : 1
+  view.dispatch(view.state.tr.delete(pos, pos + nodeSize))
+
+  const sel = view.state.selection
+  t.assert(sel instanceof NodeSelection, 'selection should be a NodeSelection for block node')
 }
 
 /**
