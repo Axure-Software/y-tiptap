@@ -1,6 +1,6 @@
 {
   "name": "@axure/y-tiptap",
-  "version": "3.0.0-fork.2",
+  "version": "3.0.1-fork.1",
   "description": "Tiptap prosemirror bindings for Yjs",
   "main": "./dist/y-tiptap.cjs",
   "module": "./src/y-tiptap.js",
