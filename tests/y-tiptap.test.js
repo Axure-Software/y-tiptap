@@ -6,6 +6,7 @@ import * as Y from 'yjs'
 import { applyRandomTests } from 'yjs/testHelper'
 
 import {
+  createDecorations,
   prosemirrorJSONToYDoc,
   prosemirrorJSONToYXmlFragment,
   redo,
@@ -16,7 +17,13 @@ import {
   yUndoPlugin,
   yXmlFragmentToProsemirrorJSON
 } from '../src/y-tiptap.js'
-import { EditorState, Plugin, TextSelection, NodeSelection } from 'prosemirror-state'
+import { Awareness } from 'y-protocols/awareness'
+import {
+  EditorState,
+  Plugin,
+  TextSelection,
+  NodeSelection
+} from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import { Schema } from 'prosemirror-model'
 import * as basicSchema from 'prosemirror-schema-basic'
@@ -82,17 +89,52 @@ export const testPluginIntegrity = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('hello world')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('hello world'))
+      )
     )
   )
-  t.compare({ viewUpdateEvents, stateUpdateEvents }, {
-    viewUpdateEvents: 1,
-    stateUpdateEvents: 2 // fired twice, because the ySyncPlugin adds additional fields to state after the initial render
-  }, 'events are fired only once')
+  t.compare(
+    { viewUpdateEvents, stateUpdateEvents },
+    {
+      viewUpdateEvents: 1,
+      stateUpdateEvents: 2 // fired twice, because the ySyncPlugin adds additional fields to state after the initial render
+    },
+    'events are fired only once'
+  )
+}
+
+/**
+ * Test that createDecorations handles missing ySyncPlugin state gracefully.
+ *
+ * This can happen during editor initialization when the ySyncPlugin state
+ * is not yet available.
+ *
+ * @param {t.TestCase} _tc
+ */
+export const testCreateDecorationsWithoutYSyncPlugin = (_tc) => {
+  const ydoc = new Y.Doc()
+  const awareness = new Awareness(ydoc)
+
+  // Create an EditorState without ySyncPlugin
+  const state = EditorState.create({
+    schema
+  })
+
+  // This should not throw even though ySyncPluginKey.getState(state) returns undefined
+  const decorations = createDecorations(
+    state,
+    awareness,
+    () => true,
+    () => document.createElement('span'),
+    () => ({})
+  )
+
+  // Should return an empty DecorationSet
+  t.assert(
+    decorations.find().length === 0,
+    'should return empty decorations when ystate is undefined'
+  )
 }
 
 /**
@@ -108,20 +150,12 @@ export const testOverlappingMarks = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      schema.node(
-        'paragraph',
-        undefined,
-        schema.text('hello world')
-      )
+      schema.node('paragraph', undefined, schema.text('hello world'))
     )
   )
 
-  view.dispatch(
-    view.state.tr.addMark(1, 3, schema.mark('comment', { id: 4 }))
-  )
-  view.dispatch(
-    view.state.tr.addMark(2, 4, schema.mark('comment', { id: 5 }))
-  )
+  view.dispatch(view.state.tr.addMark(1, 3, schema.mark('comment', { id: 4 })))
+  view.dispatch(view.state.tr.addMark(2, 4, schema.mark('comment', { id: 5 })))
   const stateJSON = JSON.parse(JSON.stringify(view.state.doc.toJSON()))
   // attrs.ychange is only available with a schema
   delete stateJSON.content[0].attrs
@@ -131,7 +165,8 @@ export const testOverlappingMarks = (_tc) => {
   t.compare(stateJSON, backandforth)
 
   // re-assure that we have overlapping comments
-  const expected = '[{"type":"text","marks":[{"type":"comment","attrs":{"id":4}}],"text":"h"},{"type":"text","marks":[{"type":"comment","attrs":{"id":4}},{"type":"comment","attrs":{"id":5}}],"text":"e"},{"type":"text","marks":[{"type":"comment","attrs":{"id":5}}],"text":"l"},{"type":"text","text":"lo world"}]'
+  const expected =
+    '[{"type":"text","marks":[{"type":"comment","attrs":{"id":4}}],"text":"h"},{"type":"text","marks":[{"type":"comment","attrs":{"id":4}},{"type":"comment","attrs":{"id":5}}],"text":"e"},{"type":"text","marks":[{"type":"comment","attrs":{"id":5}}],"text":"l"},{"type":"text","text":"lo world"}]'
   t.compare(backandforth.content[0].content, JSON.parse(expected))
 }
 
@@ -143,11 +178,9 @@ export const testDocTransformation = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('hello world')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('hello world'))
+      )
     )
   )
   const stateJSON = view.state.doc.toJSON()
@@ -163,11 +196,9 @@ export const testXmlFragmentTransformation = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('hello world')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('hello world'))
+      )
     )
   )
   const stateJSON = view.state.doc.toJSON()
@@ -185,16 +216,16 @@ export const testXmlFragmentTransformation = (_tc) => {
 export const testChangeOrigin = (_tc) => {
   const ydoc = new Y.Doc()
   const yXmlFragment = ydoc.get('prosemirror', Y.XmlFragment)
-  const yundoManager = new Y.UndoManager(yXmlFragment, { trackedOrigins: new Set(['trackme']) })
+  const yundoManager = new Y.UndoManager(yXmlFragment, {
+    trackedOrigins: new Set(['trackme'])
+  })
   const view = createNewProsemirrorView(ydoc)
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('world')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('world'))
+      )
     )
   )
   const ysyncState1 = ySyncPluginKey.getState(view.state)
@@ -226,10 +257,7 @@ export const testEmptyNotSync = (_tc) => {
       checked: true
     })
   )
-  t.compareStrings(
-    type.toString(),
-    '<custom checked="true"></custom>'
-  )
+  t.compareStrings(type.toString(), '<custom checked="true"></custom>')
 }
 
 /**
@@ -241,11 +269,9 @@ export const testEmptyParagraph = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('123')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('123'))
+      )
     )
   )
   const yxml = ydoc.get('prosemirror')
@@ -274,23 +300,18 @@ export const testInsertDuplication = (_tc) => {
   const view2 = createNewProsemirrorView(ydoc2)
   const yxml1 = ydoc1.getXmlFragment('prosemirror')
   const yxml2 = ydoc2.getXmlFragment('prosemirror')
-  yxml1.observeDeep(events => {
-    events.forEach(event => {
+  yxml1.observeDeep((events) => {
+    events.forEach((event) => {
       console.log('yxml1: ', JSON.stringify(event.changes.delta))
     })
   })
-  yxml2.observeDeep(events => {
-    events.forEach(event => {
+  yxml2.observeDeep((events) => {
+    events.forEach((event) => {
       console.log('yxml2: ', JSON.stringify(event.changes.delta))
     })
   })
   view1.dispatch(
-    view1.state.tr.insert(
-      0,
-      /** @type {any} */ (schema.node(
-        'paragraph'
-      ))
-    )
+    view1.state.tr.insert(0, /** @type {any} */ (schema.node('paragraph')))
   )
   const sync = () => {
     Y.applyUpdate(ydoc2, Y.encodeStateAsUpdate(ydoc1))
@@ -306,7 +327,9 @@ export const testInsertDuplication = (_tc) => {
   view2.dispatch(view2.state.tr.insertText('2', 3, 3))
   sync()
   checkResult({ testObjects: [view1, view2] })
-  t.assert(yxml1.toString() === '<paragraph>1122</paragraph><paragraph></paragraph>')
+  t.assert(
+    yxml1.toString() === '<paragraph>1122</paragraph><paragraph></paragraph>'
+  )
 }
 
 export const testReplaceBoldWithCode = (_tc) => {
@@ -318,11 +341,7 @@ export const testReplaceBoldWithCode = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      schema.node(
-        'paragraph',
-        undefined,
-        schema.text('test')
-      )
+      schema.node('paragraph', undefined, schema.text('test'))
     )
   )
 
@@ -330,11 +349,13 @@ export const testReplaceBoldWithCode = (_tc) => {
 
   t.compare(
     JSON.parse(JSON.stringify(view.state.doc.toJSON().content[0].content)),
-    [{
-      type: 'text',
-      marks: [{ type: 'strong' }],
-      text: 'test'
-    }],
+    [
+      {
+        type: 'text',
+        marks: [{ type: 'strong' }],
+        text: 'test'
+      }
+    ],
     'invalid view state'
   )
 
@@ -352,11 +373,13 @@ export const testReplaceBoldWithCode = (_tc) => {
 
   t.compare(
     JSON.parse(JSON.stringify(view.state.doc.toJSON().content[0].content)),
-    [{
-      type: 'text',
-      marks: [{ type: 'code' }],
-      text: 'test'
-    }],
+    [
+      {
+        type: 'text',
+        marks: [{ type: 'code' }],
+        text: 'test'
+      }
+    ],
     'invalid view state'
   )
 
@@ -373,11 +396,9 @@ export const testAddToHistory = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('123')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('123'))
+      )
     )
   )
   const yxml = ydoc.get('prosemirror')
@@ -396,14 +417,14 @@ export const testAddToHistory = (_tc) => {
   t.assert(yxml.length === 0, 'insertion was undone')
   // now insert content again, but with `'addToHistory': false`
   view.dispatch(
-    view.state.tr.insert(
-      0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('123')
-      ))
-    ).setMeta('addToHistory', false)
+    view.state.tr
+      .insert(
+        0,
+        /** @type {any} */ (
+          schema.node('paragraph', undefined, schema.text('123'))
+        )
+      )
+      .setMeta('addToHistory', false)
   )
   t.assert(
     yxml.length === 2 && yxml.get(0).length === 1,
@@ -469,30 +490,45 @@ export const testVersioning = async (_tc) => {
   const snapshot2 = Y.snapshot(ydoc)
   const snapshotDoc2 = Y.encodeStateAsUpdateV2(ydoc)
   view.dispatch(
-    view.state.tr.setMeta(ySyncPluginKey, { snapshot: snapshot2, prevSnapshot: snapshot1, permanentUserData })
+    view.state.tr.setMeta(ySyncPluginKey, {
+      snapshot: snapshot2,
+      prevSnapshot: snapshot1,
+      permanentUserData
+    })
   )
   await promise.wait(50)
   console.log('calculated diff via snapshots: ', view.state.doc.toJSON())
   // recreate the JSON, because ProseMirror messes with the constructors
-  const viewstate1 = JSON.parse(JSON.stringify(view.state.doc.toJSON().content[0].content))
-  const expectedState = [{
-    type: 'text',
-    marks: [{ type: 'ychange', attrs: { user: 'me', type: 'removed' } }],
-    text: 'hello '
-  }, {
-    type: 'text',
-    text: 'world!'
-  }]
+  const viewstate1 = JSON.parse(
+    JSON.stringify(view.state.doc.toJSON().content[0].content)
+  )
+  const expectedState = [
+    {
+      type: 'text',
+      marks: [{ type: 'ychange', attrs: { user: 'me', type: 'removed' } }],
+      text: 'hello '
+    },
+    {
+      type: 'text',
+      text: 'world!'
+    }
+  ]
   console.log('calculated diff via snapshots: ', JSON.stringify(viewstate1))
   t.compare(viewstate1, expectedState)
 
   t.info('now check whether we get the same result when rendering the updates')
   view.dispatch(
-    view.state.tr.setMeta(ySyncPluginKey, { snapshot: snapshotDoc2, prevSnapshot: snapshotDoc1, permanentUserData })
+    view.state.tr.setMeta(ySyncPluginKey, {
+      snapshot: snapshotDoc2,
+      prevSnapshot: snapshotDoc1,
+      permanentUserData
+    })
   )
   await promise.wait(50)
 
-  const viewstate2 = JSON.parse(JSON.stringify(view.state.doc.toJSON().content[0].content))
+  const viewstate2 = JSON.parse(
+    JSON.stringify(view.state.doc.toJSON().content[0].content)
+  )
   console.log('calculated diff via updates: ', JSON.stringify(viewstate2))
   t.compare(viewstate2, expectedState)
 }
@@ -512,20 +548,29 @@ export const testVersioningWithGarbageCollection = async (_tc) => {
   ytext.delete(0, 6)
   const snapshotDoc2 = Y.encodeStateAsUpdateV2(ydoc)
   view.dispatch(
-    view.state.tr.setMeta(ySyncPluginKey, { snapshot: snapshotDoc2, prevSnapshot: snapshotDoc1, permanentUserData })
+    view.state.tr.setMeta(ySyncPluginKey, {
+      snapshot: snapshotDoc2,
+      prevSnapshot: snapshotDoc1,
+      permanentUserData
+    })
   )
   await promise.wait(50)
   console.log('calculated diff via snapshots: ', view.state.doc.toJSON())
   // recreate the JSON, because ProseMirror messes with the constructors
-  const viewstate1 = JSON.parse(JSON.stringify(view.state.doc.toJSON().content[0].content))
-  const expectedState = [{
-    type: 'text',
-    marks: [{ type: 'ychange', attrs: { user: 'me', type: 'removed' } }],
-    text: 'hello '
-  }, {
-    type: 'text',
-    text: 'world!'
-  }]
+  const viewstate1 = JSON.parse(
+    JSON.stringify(view.state.doc.toJSON().content[0].content)
+  )
+  const expectedState = [
+    {
+      type: 'text',
+      marks: [{ type: 'ychange', attrs: { user: 'me', type: 'removed' } }],
+      text: 'hello '
+    },
+    {
+      type: 'text',
+      text: 'world!'
+    }
+  ]
   console.log('calculated diff via snapshots: ', JSON.stringify(viewstate1))
   t.compare(viewstate1, expectedState)
 }
@@ -537,21 +582,17 @@ export const testAddToHistoryIgnore = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('123')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('123'))
+      )
     )
   )
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('456')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('456'))
+      )
     )
   )
   const yxml = ydoc.get('prosemirror')
@@ -560,14 +601,14 @@ export const testAddToHistoryIgnore = (_tc) => {
     'contains inserted content (1)'
   )
   view.dispatch(
-    view.state.tr.insert(
-      0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('abc')
-      ))
-    ).setMeta('addToHistory', false)
+    view.state.tr
+      .insert(
+        0,
+        /** @type {any} */ (
+          schema.node('paragraph', undefined, schema.text('abc'))
+        )
+      )
+      .setMeta('addToHistory', false)
   )
   t.assert(
     yxml.length === 4 && yxml.get(0).length === 1,
@@ -576,11 +617,9 @@ export const testAddToHistoryIgnore = (_tc) => {
   view.dispatch(
     view.state.tr.insert(
       0,
-      /** @type {any} */ (schema.node(
-        'paragraph',
-        undefined,
-        schema.text('xyz')
-      ))
+      /** @type {any} */ (
+        schema.node('paragraph', undefined, schema.text('xyz'))
+      )
     )
   )
   t.assert(
@@ -638,7 +677,8 @@ const pmChanges = [
    * @param {prng.PRNG} gen
    * @param {EditorView} p
    */
-  (_y, gen, p) => { // insert text
+  (_y, gen, p) => {
+    // insert text
     const insertPos = prng.int32(gen, 0, p.state.doc.content.size)
     const marks = prng.oneOf(gen, marksChoices)
     const tr = p.state.tr
@@ -650,7 +690,8 @@ const pmChanges = [
    * @param {prng.PRNG} gen
    * @param {EditorView} p
    */
-  (_y, gen, p) => { // delete text
+  (_y, gen, p) => {
+    // delete text
     const insertPos = prng.int32(gen, 0, p.state.doc.content.size)
     const overwrite = math.min(
       prng.int32(gen, 0, p.state.doc.content.size - insertPos),
@@ -663,13 +704,17 @@ const pmChanges = [
    * @param {prng.PRNG} gen
    * @param {EditorView} p
    */
-  (_y, gen, p) => { // format text
+  (_y, gen, p) => {
+    // format text
     const insertPos = prng.int32(gen, 0, p.state.doc.content.size)
     const formatLen = math.min(
       prng.int32(gen, 0, p.state.doc.content.size - insertPos),
       2
     )
-    const mark = prng.oneOf(gen, marksChoices.filter(choice => choice.length > 0))[0]
+    const mark = prng.oneOf(
+      gen,
+      marksChoices.filter((choice) => choice.length > 0)
+    )[0]
     p.dispatch(p.state.tr.addMark(insertPos, insertPos + formatLen, mark))
   },
   /**
@@ -677,7 +722,8 @@ const pmChanges = [
    * @param {prng.PRNG} gen
    * @param {EditorView} p
    */
-  (_y, gen, p) => { // replace text
+  (_y, gen, p) => {
+    // replace text
     const insertPos = prng.int32(gen, 0, p.state.doc.content.size)
     const overwrite = math.min(
       prng.int32(gen, 0, p.state.doc.content.size - insertPos),
@@ -691,7 +737,8 @@ const pmChanges = [
    * @param {prng.PRNG} gen
    * @param {EditorView} p
    */
-  (_y, gen, p) => { // insert paragraph
+  (_y, gen, p) => {
+    // insert paragraph
     const insertPos = prng.int32(gen, 0, p.state.doc.content.size)
     const marks = prng.oneOf(gen, marksChoices)
     const tr = p.state.tr
@@ -708,7 +755,8 @@ const pmChanges = [
    * @param {prng.PRNG} gen
    * @param {EditorView} p
    */
-  (_y, gen, p) => { // insert codeblock
+  (_y, gen, p) => {
+    // insert codeblock
     const insertPos = prng.int32(gen, 0, p.state.doc.content.size)
     const tr = p.state.tr
     const text = charCounter++ + prng.word(gen)
@@ -724,7 +772,8 @@ const pmChanges = [
    * @param {prng.PRNG} gen
    * @param {EditorView} p
    */
-  (_y, gen, p) => { // wrap in blockquote
+  (_y, gen, p) => {
+    // wrap in blockquote
     const insertPos = prng.int32(gen, 0, p.state.doc.content.size)
     const overwrite = prng.int32(gen, 0, p.state.doc.content.size - insertPos)
     const tr = p.state.tr
@@ -765,7 +814,9 @@ export const testRestoreSelectionForDeletedInlineNode = (_tc) => {
         atom: true,
         selectable: true,
         parseDOM: [{ tag: 'inline-atom' }],
-        toDOM () { return ['inline-atom'] }
+        toDOM () {
+          return ['inline-atom']
+        }
       }
     }),
     marks: basicSchema.marks
@@ -793,16 +844,24 @@ export const testRestoreSelectionForDeletedInlineNode = (_tc) => {
     pos += child.nodeSize
   }
 
-  view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)))
+  view.dispatch(
+    view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos))
+  )
 
   const node = view.state.doc.nodeAt(pos)
   const nodeSize = node ? node.nodeSize : 1
   view.dispatch(view.state.tr.delete(pos, pos + nodeSize))
 
   const sel = view.state.selection
-  t.assert(!(sel instanceof NodeSelection), 'selection should not be a NodeSelection')
+  t.assert(
+    !(sel instanceof NodeSelection),
+    'selection should not be a NodeSelection'
+  )
   t.assert(sel instanceof TextSelection, 'selection should be a TextSelection')
-  t.assert(sel.anchor >= 0 && sel.anchor <= view.state.doc.content.size, 'selection anchor within bounds')
+  t.assert(
+    sel.anchor >= 0 && sel.anchor <= view.state.doc.content.size,
+    'selection anchor within bounds'
+  )
 }
 
 export const testRestoreSelectionForDeletedBlockNode = async (_tc) => {
@@ -810,14 +869,11 @@ export const testRestoreSelectionForDeletedBlockNode = async (_tc) => {
   const view = createNewComplexProsemirrorView(ydoc)
 
   view.dispatch(
-    view.state.tr.insert(
-      0,
-      [
-        complexSchema.node('paragraph', undefined, complexSchema.text('before')),
-        complexSchema.node('custom'),
-        complexSchema.node('paragraph', undefined, complexSchema.text('after'))
-      ]
-    )
+    view.state.tr.insert(0, [
+      complexSchema.node('paragraph', undefined, complexSchema.text('before')),
+      complexSchema.node('custom'),
+      complexSchema.node('paragraph', undefined, complexSchema.text('after'))
+    ])
   )
 
   // compute the absolute position of the custom block node inside the doc
@@ -829,14 +885,19 @@ export const testRestoreSelectionForDeletedBlockNode = async (_tc) => {
     pos += child.nodeSize
   }
 
-  view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)))
+  view.dispatch(
+    view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos))
+  )
 
   const node = view.state.doc.nodeAt(pos)
   const nodeSize = node ? node.nodeSize : 1
   view.dispatch(view.state.tr.delete(pos, pos + nodeSize))
 
   const sel = view.state.selection
-  t.assert(sel instanceof NodeSelection, 'selection should be a NodeSelection for block node')
+  t.assert(
+    sel instanceof NodeSelection,
+    'selection should be a NodeSelection for block node'
+  )
 }
 
 /**
