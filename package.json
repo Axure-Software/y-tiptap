@@ -1,6 +1,6 @@
 {
   "name": "@axure/y-tiptap",
-  "version": "3.0.2-fork.1",
+  "version": "3.0.2-fork.2",
   "description": "Tiptap prosemirror bindings for Yjs",
   "main": "./dist/y-tiptap.cjs",
   "module": "./src/y-tiptap.js",
@@ -51,7 +51,7 @@
     "prosemirror-state": "^1.2.3",
     "prosemirror-view": "^1.9.10",
     "y-protocols": "^1.0.1",
-    "yjs": "npm:@axure/yjs@^13.6.27-fork.2"
+    "yjs": "npm:@axure/yjs@^13.6.29-fork.1"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^21.0.1",
@@ -72,7 +72,7 @@
     "y-webrtc": "^10.2.0"
   },
   "overrides": {
-    "yjs": "npm:@axure/yjs@^13.6.27-fork.2"
+    "yjs": "npm:@axure/yjs@^13.6.29-fork.1"
   },
   "engines": {
     "npm": ">=8.0.0",
