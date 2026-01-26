@@ -19,7 +19,11 @@ import * as math from 'lib0/math'
  * @param {any} _user user data
  * @return {boolean}
  */
-export const defaultAwarenessStateFilter = (currentClientId, userClientId, _user) => currentClientId !== userClientId
+export const defaultAwarenessStateFilter = (
+  currentClientId,
+  userClientId,
+  _user
+) => currentClientId !== userClientId
 
 /**
  * Default generator for a cursor element
@@ -73,10 +77,14 @@ export const createDecorations = (
   createSelection
 ) => {
   const ystate = ySyncPluginKey.getState(state)
+  if (ystate == null || ystate.doc == null || ystate.binding == null) {
+    return DecorationSet.create(state.doc, [])
+  }
   const y = ystate.doc
   const decorations = []
   if (
-    ystate.snapshot != null || ystate.prevSnapshot != null ||
+    ystate.snapshot != null ||
+    ystate.prevSnapshot != null ||
     ystate.binding.mapping.size === 0
   ) {
     // do not render cursors while snapshot is active
